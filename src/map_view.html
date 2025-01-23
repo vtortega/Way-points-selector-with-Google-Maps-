@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>Map Point Selector</title>
+    <style>
+      html, body {
+        margin: 0; 
+        padding: 0; 
+        height: 100%;
+      }
+      #map {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+
+    <!-- Google Maps JavaScript API -->
+    <!-- Insert your Google Maps Key Below -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=GOOGLE_MAPS_KEY"></script>
+
+    <!-- Load qwebchannel.js from Qt's built-in resource -->
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+
+    <script>
+      var map;
+      var markers = {};
+      var uniqueId = 0;
+
+      /**
+       * Connect to QWebChannel so that JS can call Python methods.
+       */
+      function connectToQWebChannel(callback) {
+        new QWebChannel(qt.webChannelTransport, function(channel) {
+          window.bridge = channel.objects.bridge;
+          if (callback) {
+            callback();
+          }
+        });
+      }
+
+      /**
+       * Initialize the Google Map center.
+       * Can be changed so that it initializes on the desired location and with the desired zoom.
+       */
+      function initMap() {
+        var initialPos = { lat: -19.9173, lng: -43.9346 }; // BH center
+        map = new google.maps.Map(document.getElementById('map'), {
+          center: initialPos,
+          zoom: 13
+        });
+
+        // When user clicks on the map, place a marker and notify Python
+        map.addListener('click', function(e) {
+          var lat = e.latLng.lat();
+          var lng = e.latLng.lng();
+          var marker = new google.maps.Marker({
+            position: { lat: lat, lng: lng },
+            map: map
+          });
+          markers[uniqueId] = marker;
+
+          // Notify Python about the new point
+          if (window.bridge) {
+            window.bridge.pointAdded(lat, lng, uniqueId);
+          }
+
+          uniqueId++;
+        });
+      }
+
+      /**
+       * Remove a marker by ID (called from Python).
+       */
+      function removeMarker(markerId) {
+        if (markers[markerId]) {
+          markers[markerId].setMap(null);
+          delete markers[markerId];
+        }
+      }
+
+      /**
+       * Called when the page loads: connect QWebChannel -> initMap.
+       */
+      function onPageLoad() {
+        connectToQWebChannel(function() {
+          initMap();
+        });
+      }
+    </script>
+  </head>
+
+  <body onload="onPageLoad()">
+    <div id="map"></div>
+  </body>
+</html>
