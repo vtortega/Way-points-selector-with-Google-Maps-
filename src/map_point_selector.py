@@ -52,7 +52,7 @@ class Bridge(QObject):
 class MapPointSelector(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Map Point Selector (BH)")
+        self.setWindowTitle("Map Point Selector")
         self.resize(1200, 800)
 
         # We'll store points as (lat, lng, marker_id)
