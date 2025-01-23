@@ -25,8 +25,13 @@ pip install -r requirements.txt
 
 5. Insert your Google Maps API key
 On the `map_view.html` file. Line 20
+``` html
+<!-- Google Maps JavaScript API -->
+<!-- Insert your Google Maps Key Below -->
+<script src="https://maps.googleapis.com/maps/api/js?key=GOOGLE_MAPS_KEY"></script>
+```
 
-6. Run the server to the correct port
+7. Run the server to the correct port
 ```
 python3 -m http.server 8000
 ```
