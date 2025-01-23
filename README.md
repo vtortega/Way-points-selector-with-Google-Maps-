@@ -5,8 +5,10 @@ The App enables the user to select points on the map so to gather it's latitude 
 # How to run it
 
 1. Clone the repository.
+   
+2. `cd` the src directory
 
-2. Create a python environment 
+3. Create a python environment 
 ```
 python 3 -m venv venv
 ```
