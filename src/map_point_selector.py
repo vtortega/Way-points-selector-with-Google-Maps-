@@ -122,10 +122,15 @@ class MapPointSelector(QMainWindow):
         self.listWidget = QListWidget()
         right_layout.addWidget(self.listWidget, stretch=1)
 
-        # Button to save routes as a YAML file.
+        # Button to save all routes (multi–route format).
         btn_save = QPushButton("Save YAML")
         btn_save.clicked.connect(self.saveYaml)
         right_layout.addWidget(btn_save)
+
+        # Button to save only the current path (original format).
+        btn_save_current = QPushButton("Save Current Path")
+        btn_save_current.clicked.connect(self.saveCurrentPath)
+        right_layout.addWidget(btn_save_current)
 
         # Button to load YAML from pasted text.
         btn_load_text = QPushButton("Load YAML from Text")
@@ -274,12 +279,12 @@ class MapPointSelector(QMainWindow):
 
     def clearCurrentRoute(self):
         """Remove only the markers and polyline for the current route and clear its data."""
-        # Instruct JS to clear markers for current route.
+        # Instruct JS to clear markers for the current route.
         self.webview.page().runJavaScript(f"clearCurrentRoute({self.currentRouteId});")
-        # Clear the data for current route.
+        # Clear the data for the current route.
         if self.currentRouteId in self.routes:
             self.routes[self.currentRouteId]['points'].clear()
-        # Remove listWidget items corresponding to current route.
+        # Remove listWidget items corresponding to the current route.
         for i in range(self.listWidget.count()-1, -1, -1):
             item = self.listWidget.item(i)
             if item.text().startswith(f"Route {self.currentRouteId}:"):
@@ -299,12 +304,12 @@ class MapPointSelector(QMainWindow):
         default_color = self.colors[0]
         self.routes[self.currentRouteId] = {'id': self.currentRouteId, 'color': default_color, 'points': []}
         self.routeComboBox.addItem(f"Route {self.currentRouteId} ({default_color})", self.currentRouteId)
-        # Instruct JS to add default route.
+        # Instruct JS to add the default route.
         self.webview.page().runJavaScript(f"addRoute({self.currentRouteId}, '{default_color}');")
         self.webview.page().runJavaScript(f"setCurrentRoute({self.currentRouteId});")
 
     def saveYaml(self):
-        """Save all routes to a YAML file."""
+        """Save all routes (multi–route format) to a YAML file."""
         if not self.routes:
             return
 
@@ -317,6 +322,19 @@ class MapPointSelector(QMainWindow):
             with open(filename, "w") as f:
                 yaml.dump(data, f, default_flow_style=False)
             print("Saved:", filename)
+
+    def saveCurrentPath(self):
+        """Save only the current route (in the original format) to a YAML file."""
+        if self.currentRouteId not in self.routes or not self.routes[self.currentRouteId]['points']:
+            return
+        data = {"global_route": []}
+        for marker_id, lat, lng in self.routes[self.currentRouteId]['points']:
+            data["global_route"].append({"lat": lat, "lon": lng})
+        filename, _ = QFileDialog.getSaveFileName(self, "Save Current Path", "route.yaml", "YAML Files (*.yaml)")
+        if filename:
+            with open(filename, "w") as f:
+                yaml.dump(data, f, default_flow_style=False)
+            print("Saved current path:", filename)
 
     def togglePOI(self):
         """Toggle the display of POI labels on the map."""
