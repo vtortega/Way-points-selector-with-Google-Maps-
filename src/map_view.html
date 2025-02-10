@@ -14,82 +14,178 @@
         height: 100%;
       }
     </style>
-
     <!-- Google Maps JavaScript API -->
     <!-- Insert your Google Maps Key Below -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=GOOGLE_MAPS_KEY"></script>
-
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB3qqRpaGWEjR4ZtV9d27VEEmgZrRvy9nM"></script>
     <!-- Load qwebchannel.js from Qt's built-in resource -->
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-
     <script>
       var map;
-      var markers = {};
-      var uniqueId = 0;
+      var currentRouteId = 0; // Active route (set by Python)
+      var routes = {};        // Routes dictionary: key = routeId, value = { color, markers, polyline }
+      var poiVisible = true;  // Track POI visibility
 
-      /**
-       * Connect to QWebChannel so that JS can call Python methods.
-       */
-      function connectToQWebChannel(callback) {
-        new QWebChannel(qt.webChannelTransport, function(channel) {
-          window.bridge = channel.objects.bridge;
-          if (callback) {
-            callback();
-          }
-        });
+      // ---------- Functions called from Python ----------
+      function setCurrentRoute(routeId) {
+          currentRouteId = routeId;
       }
 
-      /**
-       * Initialize the Google Map center.
-       * Can be changed so that it initializes on the desired location and with the desired zoom.
-       */
-      function initMap() {
-        var initialPos = { lat: -19.9173, lng: -43.9346 }; // BH center
-        map = new google.maps.Map(document.getElementById('map'), {
-          center: initialPos,
-          zoom: 13
-        });
+      // Create a new route (with its color and polyline).
+      function addRoute(routeId, color) {
+          if (!(routeId in routes)) {
+              routes[routeId] = { color: color, markers: [], polyline: null };
+              routes[routeId].polyline = new google.maps.Polyline({
+                  path: [],
+                  geodesic: true,
+                  strokeColor: color,
+                  strokeOpacity: 1.0,
+                  strokeWeight: 2,
+                  map: map
+              });
+          }
+      }
 
-        // When user clicks on the map, place a marker and notify Python
-        map.addListener('click', function(e) {
-          var lat = e.latLng.lat();
-          var lng = e.latLng.lng();
+      // Add a marker to the given route.
+      function addMarkerToRoute(routeId, markerId, lat, lng) {
+          if (!(routeId in routes)) {
+              console.log("Route " + routeId + " does not exist. Creating with default color red.");
+              addRoute(routeId, "red");
+          }
+          var position = {lat: lat, lng: lng};
           var marker = new google.maps.Marker({
-            position: { lat: lat, lng: lng },
-            map: map
+              position: position,
+              map: map,
+              draggable: true,
+              icon: {
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 6,
+                  fillColor: routes[routeId].color,
+                  fillOpacity: 1,
+                  strokeWeight: 1,
+                  strokeColor: 'white'
+              }
           });
-          markers[uniqueId] = marker;
+          // When the marker is dragged, notify Python and update the polyline.
+          marker.addListener('dragend', function(e) {
+              var newLat = e.latLng.lat();
+              var newLng = e.latLng.lng();
+              console.log("Marker " + markerId + " dragged to " + newLat + ", " + newLng);
+              if (window.bridge) {
+                  window.bridge.markerMoved(newLat, newLng, markerId, routeId);
+              }
+              updatePolyline(routeId);
+          });
+          routes[routeId].markers.push({id: markerId, marker: marker});
+          updatePolyline(routeId);
+      }
 
-          // Notify Python about the new point
-          if (window.bridge) {
-            window.bridge.pointAdded(lat, lng, uniqueId);
+      // Update the polyline connecting markers in a route.
+      function updatePolyline(routeId) {
+          if (!(routeId in routes)) return;
+          var path = [];
+          // Sort markers by marker id (assumes insertion order).
+          routes[routeId].markers.sort(function(a, b) { return a.id - b.id; });
+          routes[routeId].markers.forEach(function(item) {
+              path.push(item.marker.getPosition());
+          });
+          routes[routeId].polyline.setPath(path);
+      }
+
+      // Remove a marker from a route.
+      function removeMarkerFromRoute(routeId, markerId) {
+          if (!(routeId in routes)) return;
+          for (var i = 0; i < routes[routeId].markers.length; i++) {
+              if (routes[routeId].markers[i].id === markerId) {
+                  routes[routeId].markers[i].marker.setMap(null);
+                  routes[routeId].markers.splice(i, 1);
+                  break;
+              }
           }
-
-          uniqueId++;
-        });
+          updatePolyline(routeId);
       }
 
-      /**
-       * Remove a marker by ID (called from Python).
-       */
-      function removeMarker(markerId) {
-        if (markers[markerId]) {
-          markers[markerId].setMap(null);
-          delete markers[markerId];
-        }
+      // Completely remove all routes from the map.
+      function clearAllRoutes() {
+          for (var r in routes) {
+              routes[r].markers.forEach(function(item) {
+                  item.marker.setMap(null);
+              });
+              if (routes[r].polyline) {
+                  routes[r].polyline.setMap(null);
+              }
+          }
+          routes = {};
       }
 
-      /**
-       * Called when the page loads: connect QWebChannel -> initMap.
-       */
+      // Remove all markers and clear the polyline for the current route.
+      function clearCurrentRoute(routeId) {
+          if (!(routeId in routes)) return;
+          routes[routeId].markers.forEach(function(item) {
+              item.marker.setMap(null);
+          });
+          routes[routeId].markers = [];
+          routes[routeId].polyline.setPath([]);
+      }
+
+      // Toggle POI (points of interest) labels on the map.
+      function togglePOI() {
+          poiVisible = !poiVisible;
+          if (!poiVisible) {
+              map.setOptions({
+                  styles: [
+                      {
+                          featureType: "poi",
+                          elementType: "labels",
+                          stylers: [{ visibility: "off" }]
+                      },
+                      {
+                          featureType: "transit",
+                          elementType: "labels",
+                          stylers: [{ visibility: "off" }]
+                      }
+                  ]
+              });
+          } else {
+              map.setOptions({ styles: [] });
+          }
+      }
+
+      // ---------- QWebChannel and Map Initialization ----------
+      function connectToQWebChannel(callback) {
+          new QWebChannel(qt.webChannelTransport, function(channel) {
+              window.bridge = channel.objects.bridge;
+              if (callback) callback();
+          });
+      }
+
+      function initMap() {
+          var initialPos = { lat: -19.9173, lng: -43.9346 }; // e.g., Belo Horizonte center
+          map = new google.maps.Map(document.getElementById('map'), {
+              center: initialPos,
+              zoom: 13
+          });
+          // Create the default route.
+          addRoute(currentRouteId, "red");
+
+          // On map click, add a marker to the current route.
+          map.addListener('click', function(e) {
+              var lat = e.latLng.lat();
+              var lng = e.latLng.lng();
+              var markerId = routes[currentRouteId].markers.length;
+              addMarkerToRoute(currentRouteId, markerId, lat, lng);
+              if (window.bridge) {
+                  window.bridge.pointAdded(lat, lng, markerId, currentRouteId);
+              }
+          });
+      }
+
       function onPageLoad() {
-        connectToQWebChannel(function() {
-          initMap();
-        });
+          connectToQWebChannel(function() {
+              initMap();
+          });
       }
     </script>
   </head>
-
   <body onload="onPageLoad()">
     <div id="map"></div>
   </body>
