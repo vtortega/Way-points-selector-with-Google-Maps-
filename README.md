@@ -42,4 +42,4 @@ python3 map_point_selector.py
 ```
 
 # Working example
-![Image](https://github.com/user-attachments/assets/103751cf-a7a7-40b3-bf99-d82dce872d82)
+![Image](https://github.com/user-attachments/assets/1ad77330-4aec-499c-9352-21fb5bc59225)
